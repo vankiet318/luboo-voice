@@ -1,0 +1,9 @@
+# Thư viện cần để chạy app (cũng là những gì được đóng gói vào setup.exe)
+groq
+httpx
+numpy
+onnxruntime
+sounddevice
+miniaudio
+pillow              # vẽ gương mặt Luboo (khử răng cưa)
+edge-tts

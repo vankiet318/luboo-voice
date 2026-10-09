@@ -1,0 +1,3 @@
+# Không bắt buộc, chỉ dùng khi chạy từ mã nguồn — KHÔNG đóng gói vào setup.exe
+-r requirements.txt
+faster-whisper      # STT dự phòng chạy trên máy khi Groq lỗi / mất mạng

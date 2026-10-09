@@ -1,0 +1,36 @@
+Luboo — Voice Assistant
+========================
+
+Luboo is free software for personal, non-commercial use.
+
+By installing, you agree that:
+- Your voice is recorded only after a wake word is detected (or you press the
+  microphone button), and is sent to Groq (https://groq.com) for speech recognition
+  and to generate answers.
+- Replies are read aloud using Microsoft Edge's online text-to-speech service.
+- Your Groq API key is stored only on this computer and is sent only to Groq.
+
+
+Third-party components
+----------------------
+
+Wake word models "Hey Luboo" and "Luboo ơi" (hey_luboo, luboo_oi) — trained for Luboo.
+  Training used openWakeWord's pre-computed ACAV100M features and validation set,
+  MIT environmental impulse responses, and synthetic speech from Piper voices and edge-tts.
+
+openWakeWord feature models (melspectrogram, embedding_model)
+  Copyright (c) David Scripka — https://github.com/dscripka/openWakeWord
+  Pre-trained models are licensed under CC BY-NC-SA 4.0
+  (https://creativecommons.org/licenses/by-nc-sa/4.0/). Non-commercial use only.
+  The embedding model is derived from Google's speech_embedding model (Apache 2.0).
+
+ONNX Runtime — Copyright (c) Microsoft Corporation. MIT License.
+NumPy — Copyright (c) NumPy Developers. BSD 3-Clause License.
+python-sounddevice — Copyright (c) Matthias Geier. MIT License.
+PortAudio — Copyright (c) Ross Bencina and Phil Burk. MIT-style License.
+pyminiaudio / miniaudio — Copyright (c) Irmen de Jong / David Reid. MIT License.
+edge-tts — Copyright (c) rany2. LGPL-3.0 License.
+groq-python — Copyright (c) Groq. Apache 2.0 License.
+httpx — Copyright (c) Encode OSS Ltd. BSD 3-Clause License.
+Python — Copyright (c) Python Software Foundation. PSF License.
+Tcl/Tk — Copyright (c) the Regents of the University of California and others. BSD-style License.

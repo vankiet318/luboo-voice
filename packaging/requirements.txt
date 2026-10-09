@@ -1,0 +1,3 @@
+# Chỉ dùng khi build setup.exe (môi trường .venv-build riêng, sạch)
+-r ../requirements.txt
+pyinstaller

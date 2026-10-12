@@ -1,9 +1,10 @@
-# Thư viện cần để chạy app (cũng là những gì được đóng gói vào setup.exe)
+# Libraries needed to run the app (also what gets bundled into setup.exe)
 groq
 httpx
 numpy
 onnxruntime
 sounddevice
 miniaudio
-pillow              # vẽ gương mặt Luboo (khử răng cưa)
+pillow              # draws Luboo's face (anti-aliased)
 edge-tts
+kaldi-native-fbank  # audio features for speaker recognition (Voice ID)

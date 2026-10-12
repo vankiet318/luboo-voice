@@ -1,89 +1,131 @@
-"""Mic, từ kích hoạt, thu âm câu nói và phát giọng đọc."""
-import asyncio
+"""Mic (always on) + VAD, wake word, utterance recording. (Speech playback: tts.py, speech.py, player.py.)"""
+import collections
+import queue
 import sys
 import threading
 import time
 
-import edge_tts
-import miniaudio
 import numpy as np
 import sounddevice as sd
 
 from . import config, wakeword
+from .vad import BLOCK, BLOCK_SEC, Endpointer, SileroVAD
 
 
 def rms(frame: np.ndarray) -> float:
     return float(np.sqrt(np.mean(frame.astype(np.float32) ** 2)))
 
 
-class Microphone:
+class AudioInput:
+    """Mic runs continuously (not muted while Luboo thinks / speaks). Each 32ms block is scored by Silero VAD on a
+    separate thread, then queued for the coordinator thread. Always keeps the last ~MIC_BUFFER_SEC (for barge-in)."""
+
     def __init__(self):
-        self.stream = sd.InputStream(samplerate=config.SAMPLE_RATE, channels=1,
-                                     dtype="int16", blocksize=config.FRAME)
-        self.threshold = config.MIN_SPEECH_THRESHOLD
+        self.vad = SileroVAD()
+        self._raw: queue.Queue = queue.Queue()
+        self._out: queue.Queue = queue.Queue()
+        self.recent = collections.deque(maxlen=round(config.MIC_BUFFER_SEC / BLOCK_SEC))   # [(block, probability)]
+        self.last_speech_end = 0.0      # perf_counter() at the last voiced block (for latency measurement)
+        self.last_speech_sec = 0.0      # length in seconds of the last recorded utterance (voiced part only)
+        self.last_voiced = np.zeros(0, dtype=np.int16)
+        self.overflows = 0
+        self._running = True
+        self._worker = threading.Thread(target=self._score, daemon=True)
+        self._worker.start()
+        self.stream = sd.InputStream(samplerate=config.SAMPLE_RATE, channels=1, dtype="int16",
+                                     blocksize=BLOCK, callback=self._callback)
+        self.stream.start()
 
-    def start(self):
-        if not self.stream.active:
-            self.stream.start()
+    def _callback(self, data, _frames, _time, status):
+        if status.input_overflow:
+            self.overflows += 1
+        self._raw.put(data[:, 0].copy())
 
-    def pause(self):
-        """Tạm dừng mic khi đang xử lý / đang nói, để bot không tự nghe chính mình."""
-        if self.stream.active:
-            self.stream.stop()
+    def _score(self):
+        while self._running:
+            try:
+                block = self._raw.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            item = (block, self.vad(block))
+            self.recent.append(item)
+            self._out.put(item)
 
-    def read(self) -> np.ndarray:
-        audio, _ = self.stream.read(config.FRAME)
-        return audio.flatten()
+    # ---------- reading ----------
+    def read(self, timeout: float = 0.2):
+        """(512-sample int16 block, speech probability) — or None on timeout."""
+        try:
+            return self._out.get(timeout=timeout)
+        except queue.Empty:
+            return None
 
-    def calibrate(self, seconds=1.5):
-        """Đo tiếng ồn nền để tự chọn ngưỡng 'có tiếng nói'."""
-        self.start()
-        levels = [rms(self.read()) for _ in range(int(seconds * config.SAMPLE_RATE / config.FRAME))]
-        noise = float(np.median(levels))
-        self.threshold = max(noise * 3, config.MIN_SPEECH_THRESHOLD)
-        return noise, self.threshold
+    def flush(self):
+        """Discard audio captured while Luboo was thinking / speaking (no barge-in at this stage)."""
+        while True:
+            try:
+                self._out.get_nowait()
+            except queue.Empty:
+                return
 
-    def record_utterance(self, wait_sec: float, stop_event: threading.Event | None = None):
-        """Chờ bạn bắt đầu nói (tối đa wait_sec), ghi đến khi im lặng SILENCE_SEC.
-        Trả về mảng int16, hoặc None nếu không ai nói gì."""
-        frame_sec = config.FRAME / config.SAMPLE_RATE
-        chunks, start_idx, silent, elapsed = [], None, 0.0, 0.0
-        while elapsed < config.MAX_RECORD_SEC:
+    def level(self, seconds: float = 1.0) -> float:
+        """Average mic loudness over the last `seconds` — to check whether the mic is muted."""
+        blocks = [b for b, _ in list(self.recent)[-round(seconds / BLOCK_SEC):]]
+        return float(np.median([rms(b) for b in blocks])) if blocks else 0.0
+
+    def record_utterance(self, wait_sec: float, stop_event: threading.Event | None = None,
+                         ep: Endpointer | None = None):
+        """Wait for you to start speaking (up to wait_sec), record until SILENCE_SEC of silence (per Silero VAD).
+        ep: continue an utterance already in progress (when you talk over Luboo). Returns an int16 array, or None."""
+        ep = ep or Endpointer()
+        waited, total = 0.0, len(ep.blocks) * BLOCK_SEC
+        while total < config.MAX_RECORD_SEC:
             if stop_event is not None and stop_event.is_set():
                 return None
-            frame = self.read()
-            chunks.append(frame)
-            elapsed += frame_sec
-            if rms(frame) > self.threshold:
-                if start_idx is None:
-                    start_idx = len(chunks) - 1
-                silent = 0.0
-            elif start_idx is not None:
-                silent += frame_sec
-                if silent >= config.SILENCE_SEC:
-                    break
-            elif elapsed > wait_sec:
-                return None
-        if start_idx is None:
+            item = self.read()
+            if item is None:
+                continue
+            total += BLOCK_SEC
+            if ep.feed(*item):
+                break
+            if not ep.started:
+                waited += BLOCK_SEC
+                if waited > wait_sec:
+                    return None
+        if not ep.started:
             return None
-        pre_roll = int(0.4 / frame_sec)          # giữ lại 0.4s trước khi bắt đầu nói
-        speech = np.concatenate(chunks[max(0, start_idx - pre_roll):])
-        if len(speech) < 0.4 * config.SAMPLE_RATE:   # quá ngắn -> có thể là tiếng động
+        self.last_speech_end = time.perf_counter() - ep.silence_after_speech_sec()
+        self.last_speech_sec = ep.speech_sec()
+        self.last_voiced = ep.speech_audio()             # voiced part only (for speaker recognition / enrollment)
+        if ep.speech_sec() < config.MIN_UTTERANCE_SEC:     # too short -> probably just noise
             return None
-        return speech
+        return ep.audio()
+
+    def close(self):
+        self._running = False
+        self.stream.close()
 
 
 class WakeWordDetector:
     def __init__(self):
-        if not getattr(sys, "frozen", False):          # bản đóng gói đã kèm sẵn models/
+        if not getattr(sys, "frozen", False):          # the packaged build already bundles models/
             pretrained = [] if config.USE_CUSTOM_WAKE_WORDS else list(config.WAKE_WORDS)
             wakeword.download_models(config.MODELS_DIR, pretrained)
         self.model = wakeword.WakeWordEngine(
             config.MODELS_DIR, {n: config.wake_word_path(n) for n in config.WAKE_WORDS})
-        self.streak = {n: 0 for n in config.WAKE_WORDS}       # số khung liên tiếp đạt ngưỡng
+        self.streak = {n: 0 for n in config.WAKE_WORDS}       # consecutive frames above threshold
+        self.pending = np.zeros(0, dtype=np.int16)            # gathers 32ms mic blocks into 80ms frames
+
+    def feed(self, block: np.ndarray) -> str | None:
+        """Takes mic audio of any size; returns the wake word name if heard."""
+        self.pending = np.concatenate([self.pending, block])
+        found = None
+        while len(self.pending) >= config.FRAME and not found:
+            frame, self.pending = self.pending[:config.FRAME], self.pending[config.FRAME:]
+            found = self.detect(frame)
+        return found
 
     def detect(self, frame: np.ndarray) -> str | None:
-        """Trả về tên từ kích hoạt nếu nghe thấy, ngược lại None."""
+        """frame: exactly 1280 samples. Returns the wake word name if heard, otherwise None."""
         scores = self.model.predict(frame)
         for name in self.streak:
             self.streak[name] = self.streak[name] + 1 if scores.get(name, 0) >= config.WAKE_THRESHOLD else 0
@@ -97,116 +139,4 @@ class WakeWordDetector:
     def reset(self):
         self.model.reset()
         self.streak = {n: 0 for n in config.WAKE_WORDS}
-
-
-def beep(freq=880, duration=0.12, volume=0.25):
-    """Tiếng 'ting' báo bot đã nghe thấy."""
-    sr = 24000
-    t = np.linspace(0, duration, int(sr * duration), endpoint=False)
-    tone = np.sin(2 * np.pi * freq * t) * volume * np.hanning(len(t))
-    sd.play(tone.astype(np.float32), sr)
-    sd.wait()
-
-
-class Speaker:
-    SAMPLE_RATE = 24000
-
-    def __init__(self):
-        self._stop = threading.Event()
-        self._cache: dict[str, tuple[np.ndarray, list]] = {}    # câu -> (âm thanh, mốc phụ đề) đã tạo sẵn
-
-    async def _synthesize(self, text: str, voice: str) -> tuple[bytes, list[tuple[float, str]]]:
-        """Trả về (mp3, [(giây bắt đầu, từ)...]) — thời điểm từng từ dùng để chạy phụ đề khớp giọng."""
-        # Dịch vụ của Edge thỉnh thoảng trả về rỗng (bị giới hạn tạm thời) -> thử lại vài lần
-        for attempt in range(3):
-            try:
-                data, words = b"", []
-                async for chunk in edge_tts.Communicate(text, voice, rate=config.TTS_RATE, pitch=config.TTS_PITCH,
-                                                        boundary="WordBoundary").stream():
-                    if chunk["type"] == "audio":
-                        data += chunk["data"]
-                    elif chunk["type"] == "WordBoundary":
-                        words.append((chunk["offset"] / 10_000_000, chunk["text"]))   # đơn vị 100 ns -> giây
-                return data, words
-            except edge_tts.exceptions.NoAudioReceived:
-                if attempt == 2 or self._stop.is_set():
-                    raise
-                await asyncio.sleep(1.0 * (attempt + 1))
-
-    def stop(self):
-        self._stop.set()
-        sd.stop()
-
-    def _prepare(self, text: str) -> tuple[np.ndarray, list]:
-        """Tải giọng đọc + giải mã. Câu đã tạo sẵn (preload) thì lấy ngay, không cần mạng."""
-        if text in self._cache:
-            return self._cache[text]
-        mp3, words = asyncio.run(self._synthesize(text, config.VOICE))
-        if not mp3:
-            return np.zeros(0, dtype=np.int16), []
-        decoded = miniaudio.decode(mp3, output_format=miniaudio.SampleFormat.SIGNED16,
-                                   nchannels=1, sample_rate=self.SAMPLE_RATE)
-        return np.frombuffer(decoded.samples, dtype=np.int16), subtitle_cues(text, words)
-
-    def preload(self, texts: list[str]):
-        """Tạo sẵn giọng đọc cho các câu hay dùng (lời chào) — chạy nền lúc mở app."""
-        for text in texts:
-            if text in self._cache:
-                continue
-            try:
-                self._cache[text] = self._prepare(text)
-            except Exception:
-                pass                                            # lỗi mạng: lúc cần sẽ tải lại
-            time.sleep(0.8)                                     # tránh bị Microsoft giới hạn
-
-    def is_ready(self, text: str) -> bool:
-        return text in self._cache
-
-    def say(self, text: str, on_level=None, on_subtitle=None):
-        """Đọc câu trả lời. on_level(0..1): âm lượng để mấp máy miệng.
-        on_subtitle(chữ): phần câu đã được đọc tới — hiện dần đúng lúc từng từ phát ra."""
-        self._stop.clear()
-        samples, cues = self._prepare(text)
-        if not len(samples) or self._stop.is_set():
-            return
-
-        sd.play(samples, self.SAMPLE_RATE)
-        started = time.time()
-        duration = len(samples) / self.SAMPLE_RATE
-        window = int(0.05 * self.SAMPLE_RATE)
-        shown = None
-        while not self._stop.is_set():
-            elapsed = time.time() - started
-            pos = int(elapsed * self.SAMPLE_RATE)
-            if pos >= len(samples):
-                break
-            if on_level:
-                on_level(min(1.0, rms(samples[pos:pos + window]) / 6000))
-            if on_subtitle:
-                end = max((e for t, e in cues if t <= elapsed), default=0)
-                if end != shown:
-                    shown = end
-                    on_subtitle(text[:end] if cues else text)
-            time.sleep(0.03)
-        if not self._stop.is_set():
-            time.sleep(max(0.0, duration - (time.time() - started)))
-            if on_subtitle:
-                on_subtitle(text)
-        if on_level:
-            on_level(0.0)
-
-
-def subtitle_cues(text: str, words: list[tuple[float, str]]) -> list[tuple[float, int]]:
-    """Khớp từng từ edge-tts trả về với vị trí trong câu -> [(giây bắt đầu, số ký tự hiện tới)].
-    Dấu câu dính liền sau từ ("tough," "left!") được hiện cùng từ đó."""
-    cues, pos, lower = [], 0, text.lower()
-    for start, word in words:
-        i = lower.find(word.lower(), pos)
-        if i < 0:
-            continue
-        end = i + len(word)
-        while end < len(text) and not text[end].isspace() and not text[end].isalnum():
-            end += 1
-        cues.append((start, end))
-        pos = end
-    return cues
+        self.pending = np.zeros(0, dtype=np.int16)

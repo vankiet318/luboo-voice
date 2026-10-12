@@ -1,3 +1,3 @@
-# Chỉ dùng khi build setup.exe (môi trường .venv-build riêng, sạch)
+# Only used when building setup.exe (separate, clean .venv-build environment)
 -r ../requirements.txt
 pyinstaller

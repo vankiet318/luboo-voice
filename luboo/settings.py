@@ -1,4 +1,4 @@
-"""Cài đặt của người dùng, lưu ở %APPDATA%\\Luboo\\settings.json."""
+"""User settings, stored in %APPDATA%\\Luboo\\settings.json."""
 import json
 import os
 
@@ -7,8 +7,8 @@ from . import config
 PATH = os.path.join(config.DATA_DIR, "settings.json")
 
 DEFAULTS = {
-    "api_key": "",              # Groq API key (trống -> GROQ_API_KEY hoặc key nhúng sẵn của bản test)
-    "on_top": False,            # cửa sổ luôn nổi trên các cửa sổ khác
+    "api_key": "",              # Groq API key (empty -> GROQ_API_KEY or the test build's embedded key)
+    "on_top": False,            # keep the window always on top of other windows
 }
 
 

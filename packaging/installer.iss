@@ -1,9 +1,9 @@
-; Inno Setup — gói thư mục dist\Luboo thành một file setup.exe. Chạy qua packaging\build.ps1.
-; Mọi đường dẫn tính từ thư mục gốc của repo (SourceDir).
+; Inno Setup - packs the dist\Luboo folder into a single setup.exe. Run via packaging\build.ps1.
+; All paths are relative to the repo root (SourceDir).
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
-; "-PRIVATE" khi build bằng build.ps1 -EmbedKey (bản có nhúng Groq key — chỉ gửi người tin cậy)
+; "-PRIVATE" when built with build.ps1 -EmbedKey (build with an embedded Groq key - only send to trusted people)
 #ifndef Suffix
   #define Suffix ""
 #endif
@@ -16,7 +16,7 @@ AppVersion={#AppVersion}
 AppPublisher=Luboo
 DefaultDirName={autopf}\Luboo
 DefaultGroupName=Luboo
-; Cài cho riêng người dùng hiện tại — không cần quyền Administrator
+; Install for the current user only - no Administrator rights needed
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=dist

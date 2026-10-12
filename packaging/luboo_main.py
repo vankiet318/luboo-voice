@@ -1,4 +1,4 @@
-"""Điểm khởi động cho PyInstaller (Luboo.exe) — tương đương `python -m luboo`."""
+"""PyInstaller entry point (Luboo.exe) — equivalent to `python -m luboo`."""
 from luboo.app import main
 
 main()

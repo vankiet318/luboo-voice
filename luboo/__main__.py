@@ -1,4 +1,4 @@
-"""python -m luboo   (thêm --selftest để kiểm tra model đi kèm)"""
+"""python -m luboo   (add --selftest to check the bundled models)"""
 from .app import main
 
 main()

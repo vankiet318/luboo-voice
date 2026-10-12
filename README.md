@@ -1,12 +1,14 @@
 # Luboo
 
 An **English** voice assistant for Windows, with an expressive character named Luboo and a minimal interface.
-Call Luboo by voice, ask anything — even in the middle of a game — and hear the answer.
+Call Luboo by voice, ask anything, and hear the answer.
 
 ## Features
 
 - **"Hey Luboo" wake word** ("Luboo" is pronounced "Loo-boo") — a custom-trained model that runs locally.
-- **Web search** for knowledge questions (game guides, recent info); casual chat gets a fast direct reply.
+- **Web search** for knowledge questions (facts, news, weather, prices); casual chat gets a fast direct reply.
+- **Fast replies** — Luboo starts speaking as soon as the first sentence is written (~2.6 s from the end of your question for casual chat), and you can click Luboo to cut it off at any time.
+- **Talk over Luboo** — after a 30-second Voice ID setup (Settings), just start talking to interrupt it; other people's voices are ignored. If you pause mid-sentence and keep going while Luboo is still thinking, both parts are joined into one question.
 - **Luboo the character** changes expression to match each reply, blinks, looks around, and moves its mouth with the voice.
 - **Minimal** — just the character, one line of text and two buttons, *Talk* · *Settings*; click Luboo to talk or to interrupt.
 - **Free Groq API key** — enter it in Settings; you can also build a version with a key embedded to share with friends and family for testing.
@@ -23,15 +25,19 @@ Mic ─► Wake word ─► Groq Whisper ─► Groq LLM ─► edge-tts ─► 
 | Component | Technology |
 |---|---|
 | Wake word | Custom-trained model ("Hey Luboo") on openWakeWord features, run with onnxruntime |
+| End of speech | Silero VAD (local, onnxruntime) |
+| Voice ID (who is speaking) | WeSpeaker ResNet34 (local, onnxruntime) + kaldi-native-fbank |
 | Speech → text | Groq `whisper-large-v3-turbo` |
 | Replies | Groq `openai/gpt-oss-120b` (+ `browser_search` web tool), falling back to `openai/gpt-oss-20b` |
-| Text → speech | edge-tts |
+| Text → speech | edge-tts (`en-US-MichelleNeural`) |
 | Interface | Tkinter |
 
 ## Privacy
 
 - Audio is sent out only **after** the wake word is heard (or when you press *Talk* / click Luboo).
 - Your own API key is stored only on your computer and is sent only to Groq.
+- While Luboo thinks or talks, the mic keeps listening **locally** (so you can interrupt or finish your sentence).
+- Voice ID stores a voiceprint (numbers, not a recording) only on your computer; remove it in Settings any time.
 
 ## Project layout
 
@@ -40,18 +46,23 @@ luboo/          app source — run with: python -m luboo
 resources/      custom wake word model (wakewords/), downloaded models, icon
 packaging/      builds the .exe installer (build.ps1, PyInstaller, Inno Setup)
 docs/           guides
+tools/          dev scripts — latency / VAD / barge-in benchmarks, timing_report.py
 ```
 
 | File in `luboo/` | Role |
 |---|---|
 | `app.py` | Interface: the Luboo character (drawn with Pillow), Settings |
-| `assistant.py` | Orchestration: sleep → listen → greet → think → speak |
-| `audio.py` | Mic, recording, voice playback, voice-synced subtitles |
+| `assistant.py` | Orchestration (UI-independent): sleep → listen → greet → think → speak, one `turn_id` per turn |
+| `audio.py`, `vad.py` | Always-on mic, wake word, Silero VAD + end-of-speech detection |
+| `speech.py` | Speaks a reply chunk by chunk as the LLM streams it; cancelling a turn drops all of its audio |
+| `speaker_id.py` | Voice ID: enroll your voice, check whether the person talking is you |
+| `tts.py`, `player.py` | Pluggable text-to-speech (edge-tts, retries slow requests); audio output queue (instant stop, volume) |
+| `timing.py` | Per-turn latency log (`%APPDATA%\Luboo\timing.jsonl`) |
 | `wakeword.py` | Wake word detection |
 | `brain.py`, `api.py` | Transcription, model selection, Groq calls |
 | `config.py`, `settings.py` | Configuration, user settings |
 
-How to run, build, train the wake word model and customize the app: [docs/HUONG_DAN.md](docs/HUONG_DAN.md) (in Vietnamese).
+How to run, build, train the wake word model and customize the app: [docs/GUIDE.md](docs/GUIDE.md).
 
 ## Third-party notices
 

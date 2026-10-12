@@ -1,4 +1,4 @@
-"""Vẽ icon app (nhân vật Luboo) ra resources/icon.ico."""
+"""Draw the app icon (the Luboo character) to resources/icon.ico."""
 import os
 
 from PIL import Image, ImageDraw
@@ -6,14 +6,14 @@ from PIL import Image, ImageDraw
 CLAY, CLAY_LIGHT, INK, BLUSH, PAPER = "#A493D8", "#B9ABE4", "#2A2638", "#F3B3C3", "#F4F1F8"
 OUT = os.path.join(os.path.dirname(__file__), "..", "resources", "icon.ico")
 
-S = 1024                                   # vẽ lớn rồi thu nhỏ cho mượt
+S = 1024                                   # draw large, then downscale for smoothness
 img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 d = ImageDraw.Draw(img)
 d.rounded_rectangle((64, 96, S - 64, S - 64), radius=380, fill=CLAY)
 d.ellipse((250, 210, 400, 280), fill=CLAY_LIGHT)
 for side in (-1, 1):
     cx = S / 2 + side * 170
-    bx = cx + side * 30                     # má hồng lệch ra ngoài mắt một chút
+    bx = cx + side * 30                     # blush cheeks offset slightly outward from the eyes
     d.ellipse((bx - 80, 590, bx + 80, 660), fill=BLUSH)
     d.ellipse((cx - 52, 380, cx + 52, 520), fill=INK)
     d.ellipse((cx - 34, 402, cx - 4, 432), fill=PAPER)

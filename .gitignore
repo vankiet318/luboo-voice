@@ -220,15 +220,15 @@ __marimo__/
 .streamlit/secrets.toml
 
 # ---------- Luboo ----------
-# File cấu hình PyInstaller của project (mẫu ở trên bỏ qua mọi *.spec)
+# The project's PyInstaller spec file (the template above ignores all *.spec)
 !packaging/luboo.spec
 .venv-build/
 .venv-train/
-# Model tải về lúc build/chạy và icon tự sinh (model tự train trong resources/wakewords/ thì có lên git)
+# Models downloaded at build/run time and the generated icon (self-trained models in resources/wakewords/ are committed)
 resources/models/
 resources/icon.ico
-# Code train, dữ liệu train (có giọng thật) và server Cloudflare — chỉ giữ trên máy, không đưa lên git
+# Training code, training data (includes real voice) and the Cloudflare server — local only, not pushed to git
 training/
 server/
-# Groq key nhúng cho bản build gửi bạn bè test (packaging/build.ps1 -EmbedKey)
+# Embedded Groq key for builds sent to friends for testing (packaging/build.ps1 -EmbedKey)
 luboo/_embedded_key.py

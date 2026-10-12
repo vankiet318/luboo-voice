@@ -1,1 +1,1 @@
-Model từ kích hoạt "Hey Luboo" (`hey_luboo.onnx`). Xem docs/HUONG_DAN.md, mục 3.
+Wake word model "Hey Luboo" (`hey_luboo.onnx`). See docs/GUIDE.md, section 3.

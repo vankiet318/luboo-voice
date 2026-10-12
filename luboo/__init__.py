@@ -1,1 +1,1 @@
-"""Luboo — trợ lý giọng nói. Chạy: python -m luboo"""
+"""Luboo — voice assistant. Run: python -m luboo"""

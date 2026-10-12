@@ -222,6 +222,21 @@ class SettingsDialog:
         tk.Label(win, text=app.connection_text(), **small).pack(fill="x", pady=(10, 0))
 
         tk.Frame(win, bg=LINE, height=1).pack(fill="x", pady=14)
+        tk.Label(win, text="Voice ID", **{**text, "font": (FONT, 11, "bold")}).pack(fill="x")
+        self.voice_status = tk.Label(win, **small)
+        self.voice_status.pack(fill="x", pady=(4, 0))
+        voice_row = tk.Frame(win, bg=PAPER)
+        voice_row.pack(fill="x", pady=(6, 0))
+        link_btn = dict(relief="flat", bd=0, bg=PAPER, activebackground=PAPER, font=(FONT, 9, "underline"),
+                        cursor="hand2", padx=0)
+        self.enroll_btn = tk.Button(voice_row, fg=CLAY_DARK, activeforeground=INK,
+                                    command=self.enroll, **link_btn)
+        self.enroll_btn.pack(side="left")
+        self.forget_btn = tk.Button(voice_row, text="Remove", fg=MUTED, activeforeground=INK,
+                                    command=self.forget_voice, **link_btn)
+        self.refresh_voice()
+
+        tk.Frame(win, bg=LINE, height=1).pack(fill="x", pady=14)
         self.on_top = tk.BooleanVar(value=s.get("on_top", False))
         tk.Checkbutton(win, text="Keep Luboo on top of other windows", variable=self.on_top, bg=PAPER, fg=INK,
                        selectcolor=PAPER, activebackground=PAPER, font=(FONT, 10), anchor="w",
@@ -235,10 +250,28 @@ class SettingsDialog:
         tk.Button(buttons, text="Cancel", bg=PAPER, fg=MUTED, activebackground=PAPER, activeforeground=INK,
                   command=win.destroy, **flat).pack(side="right", padx=6)
 
+    def refresh_voice(self):
+        if self.app.assistant.voice_enrolled():
+            self.voice_status.configure(text="Set up — only your voice can interrupt Luboo while it talks.")
+            self.enroll_btn.configure(text="Record again")
+            self.forget_btn.pack(side="left", padx=(14, 0))
+        else:
+            self.voice_status.configure(text="Not set up — talking over Luboo won't stop it yet.")
+            self.enroll_btn.configure(text="Set up my voice (about 30 seconds)")
+            self.forget_btn.pack_forget()
+
+    def enroll(self):
+        self.win.destroy()
+        EnrollDialog(self.app)
+
+    def forget_voice(self):
+        self.app.assistant.forget_voice()
+        self.refresh_voice()
+
     def save(self):
         s = self.app.settings
         s["api_key"] = self.key.get().strip()
-        if not api.key_source(s):                            # chưa có key nào để dùng
+        if not api.key_source(s):                            # no usable key at all
             self.key.configure(highlightbackground=CLAY_DARK, highlightcolor=CLAY_DARK)
             return
         s["on_top"] = self.on_top.get()
@@ -247,10 +280,87 @@ class SettingsDialog:
         self.win.destroy()
 
 
+class EnrollDialog:
+    """Voice enrollment: read each on-screen sentence aloud. The mic records, Luboo builds a voiceprint (local only)."""
+
+    def __init__(self, app: "App"):
+        self.app = app
+        win = self.win = tk.Toplevel(app.root)
+        win.title("Voice ID")
+        win.configure(bg=PAPER, padx=24, pady=20)
+        win.resizable(False, False)
+        win.transient(app.root)
+        win.grab_set()
+        win.protocol("WM_DELETE_WINDOW", self.cancel)
+        total = len(config.ENROLL_SENTENCES)
+        tk.Label(win, text="Read each sentence out loud, in your normal voice.", bg=PAPER, fg=INK,
+                 font=(FONT, 10), anchor="w").pack(fill="x")
+        tk.Label(win, text="Use the microphone you'll talk to Luboo with, in a quiet room.", bg=PAPER, fg=MUTED,
+                 font=(FONT, 9), anchor="w").pack(fill="x", pady=(2, 0))
+        self.step = tk.Label(win, text=f"0 / {total}", bg=PAPER, fg=MUTED, font=(FONT, 9), anchor="w")
+        self.step.pack(fill="x", pady=(16, 0))
+        self.sentence = tk.Label(win, text="Getting ready…", bg=PAPER, fg=INK, font=(FONT, 13, "bold"),
+                                 wraplength=360, justify="left", anchor="w", height=3)
+        self.sentence.pack(fill="x", pady=(4, 0))
+        self.status = tk.Label(win, text="", bg=PAPER, fg=MUTED, font=(FONT, 9), anchor="w")
+        self.status.pack(fill="x", pady=(6, 0))
+        self.button = tk.Button(win, text="Cancel", bg=PAPER, fg=MUTED, activebackground=PAPER,
+                                activeforeground=INK, relief="flat", bd=0, padx=16, pady=5, font=(FONT, 10),
+                                cursor="hand2", command=self.cancel)
+        self.button.pack(anchor="e", pady=(18, 0))
+        self.total = total
+        self.finished = False
+        app.enroll_dialog = self
+        app.assistant.enroll_voice()
+
+    def on_event(self, kind, *args):
+        if kind == "prompt":
+            i, sentence = args
+            self.step.configure(text=f"{i + 1} / {self.total}")
+            self.sentence.configure(text=f"“{sentence}”")
+            self.status.configure(text="Listening… start whenever you're ready.", fg=MUTED)
+        elif kind == "heard":
+            self.status.configure(text="Got it!", fg=CLAY_DARK)
+        elif kind == "retry":
+            self.status.configure(text="I didn't catch that — please read it again.", fg=CLAY_DARK)
+        elif kind == "done":
+            scores = args[0]
+            self.finished = True
+            self.step.configure(text=f"{self.total} / {self.total}")
+            if min(scores) < 0.5:
+                self.sentence.configure(text="Saved — but some sentences sounded different.")
+                self.status.configure(text="If interrupting doesn't work well, record again in a quieter place.",
+                                      fg=CLAY_DARK)
+            else:
+                self.sentence.configure(text="All set! Luboo knows your voice now.")
+                self.status.configure(text="Talk over Luboo any time to interrupt it.", fg=MUTED)
+            self.button.configure(text="Done", bg=INK, fg=PAPER, activebackground=CLAY, activeforeground=PAPER)
+        elif kind == "failed":
+            self.finished = True
+            if args and args[0] == "cancelled":
+                self.close()
+                return
+            self.sentence.configure(text="I couldn't hear you.")
+            self.status.configure(text="Check that your microphone is on and selected in Windows, then try again.",
+                                  fg=CLAY_DARK)
+            self.button.configure(text="Close")
+
+    def cancel(self):
+        if not self.finished:
+            self.app.assistant.cancel_enroll()
+        self.close()
+
+    def close(self):
+        if self.app.enroll_dialog is self:
+            self.app.enroll_dialog = None
+        if self.win.winfo_exists():
+            self.win.destroy()
+
+
 class App:
     def __init__(self):
         if sys.platform == "win32":
-            # Báo Windows đây là app "Luboo" riêng -> taskbar hiện icon Luboo, kể cả khi chạy bằng python -m luboo
+            # Tell Windows this is its own "Luboo" app -> taskbar shows the Luboo icon, even under python -m luboo
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Luboo.VoiceAssistant")
         self.root = tk.Tk()
@@ -258,7 +368,7 @@ class App:
         self.root.configure(bg=PAPER)
         self.root.resizable(False, False)
         if os.path.exists(config.ICON_PATH):
-            self.root.iconbitmap(default=config.ICON_PATH)          # mọi cửa sổ (kể cả Settings) dùng icon Luboo
+            self.root.iconbitmap(default=config.ICON_PATH)          # all windows (incl. Settings) use the Luboo icon
         self.events: queue.Queue = queue.Queue()
         self.settings = settings.load()
         self.state = "loading"
@@ -287,7 +397,9 @@ class App:
             on_level=lambda lvl: setattr(self.face, "level", lvl),
             on_log=lambda t: print(time.strftime("%Y-%m-%d %H:%M:%S"), t),   # log file only
             on_subtitle=lambda t: e(("subtitle", t)),
+            on_enroll=lambda *args: e(("enroll", *args)),
         )
+        self.enroll_dialog: EnrollDialog | None = None
         self.apply_settings()
         self.assistant.start()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -340,7 +452,7 @@ class App:
         print(time.strftime("%Y-%m-%d %H:%M:%S"), {"user": "You:", "bot": "Luboo:"}[role], text)
         if role == "user":
             self.set_caption(f"“{text}”")
-        # câu trả lời của Luboo hiện qua "subtitle" — đồng bộ với giọng đọc
+        # Luboo's replies are shown via "subtitle" — synced with the voice
 
     def face_clicked(self):
         if self.state in ("speaking", "listening", "thinking", "idle"):
@@ -363,6 +475,8 @@ class App:
                 self.on_message(ev[1], ev[2])
             elif ev[0] == "subtitle":
                 self.set_caption(ev[1], INK)
+            elif ev[0] == "enroll" and self.enroll_dialog is not None:
+                self.enroll_dialog.on_event(*ev[1:])
         self.face.draw()
         self.root.after(33, self.tick)        # ~30 fps
 
@@ -374,12 +488,15 @@ def selftest() -> int:
     """`Luboo.exe --selftest`: load every bundled model and run it once; result goes to the log."""
     import numpy as np
     from .audio import WakeWordDetector
+    from .vad import BLOCK, SileroVAD
     try:
         noise = (np.random.default_rng(0).normal(0, 800, 16000 * 3)).astype(np.int16)
         detector = WakeWordDetector()
         for i in range(0, len(noise) - 1280, 1280):
             detector.detect(noise[i:i + 1280])
-        print(f"SELFTEST OK — wake words: {list(config.WAKE_WORDS)}")
+        vad = SileroVAD()
+        probs = [vad(noise[i:i + BLOCK]) for i in range(0, len(noise) - BLOCK, BLOCK)]
+        print(f"SELFTEST OK — wake words: {list(config.WAKE_WORDS)}, VAD max on noise: {max(probs):.2f}")
         return 0
     except Exception:
         import traceback

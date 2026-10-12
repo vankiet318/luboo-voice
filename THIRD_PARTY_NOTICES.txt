@@ -9,6 +9,11 @@ By installing, you agree that:
   and to generate answers.
 - Replies are read aloud using Microsoft Edge's online text-to-speech service.
 - Your Groq API key is stored only on this computer and is sent only to Groq.
+- While Luboo is thinking or talking, the microphone keeps listening on this computer
+  so you can interrupt it or finish your sentence.
+- If you set up Voice ID, a voiceprint (a list of numbers describing your voice, not a
+  recording) is stored only on this computer and is never sent anywhere. You can remove
+  it in Settings at any time.
 
 
 Third-party components
@@ -23,6 +28,17 @@ openWakeWord feature models (melspectrogram, embedding_model)
   Pre-trained models are licensed under CC BY-NC-SA 4.0
   (https://creativecommons.org/licenses/by-nc-sa/4.0/). Non-commercial use only.
   The embedding model is derived from Google's speech_embedding model (Apache 2.0).
+
+Silero VAD (silero_vad.onnx) — Copyright (c) 2020-present Silero Team — https://github.com/snakers4/silero-vad
+  MIT License.
+
+WeSpeaker ResNet34 speaker model (wespeaker_resnet34.onnx, "voxceleb_resnet34_LM")
+  WeSpeaker team — https://github.com/wenet-e2e/wespeaker
+  https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM
+  Licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Used unmodified.
+  Trained on VoxCeleb (https://www.robots.ox.ac.uk/~vgg/data/voxceleb/).
+
+kaldi-native-fbank — Copyright (c) Xiaomi Corporation and k2-fsa contributors. Apache 2.0 License.
 
 ONNX Runtime — Copyright (c) Microsoft Corporation. MIT License.
 NumPy — Copyright (c) NumPy Developers. BSD 3-Clause License.

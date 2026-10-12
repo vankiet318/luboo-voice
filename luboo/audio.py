@@ -121,7 +121,7 @@ class Speaker:
         for attempt in range(3):
             try:
                 data, words = b"", []
-                async for chunk in edge_tts.Communicate(text, voice, rate=config.TTS_RATE,
+                async for chunk in edge_tts.Communicate(text, voice, rate=config.TTS_RATE, pitch=config.TTS_PITCH,
                                                         boundary="WordBoundary").stream():
                     if chunk["type"] == "audio":
                         data += chunk["data"]

@@ -14,7 +14,7 @@ By installing, you agree that:
 Third-party components
 ----------------------
 
-Wake word models "Hey Luboo" and "Luboo ơi" (hey_luboo, luboo_oi) — trained for Luboo.
+Wake word model "Hey Luboo" (hey_luboo) — trained for Luboo.
   Training used openWakeWord's pre-computed ACAV100M features and validation set,
   MIT environmental impulse responses, and synthetic speech from Piper voices and edge-tts.
 
@@ -29,6 +29,7 @@ NumPy — Copyright (c) NumPy Developers. BSD 3-Clause License.
 python-sounddevice — Copyright (c) Matthias Geier. MIT License.
 PortAudio — Copyright (c) Ross Bencina and Phil Burk. MIT-style License.
 pyminiaudio / miniaudio — Copyright (c) Irmen de Jong / David Reid. MIT License.
+Pillow — Copyright (c) Jeffrey 'Alex' Clark and contributors; Secret Labs AB; Fredrik Lundh and contributors. MIT-CMU (HPND) License.
 edge-tts — Copyright (c) rany2. LGPL-3.0 License.
 groq-python — Copyright (c) Groq. Apache 2.0 License.
 httpx — Copyright (c) Encode OSS Ltd. BSD 3-Clause License.
